@@ -18,6 +18,7 @@ import org.apache.zookeeper.proto.CreateResponse;
 import org.apache.zookeeper.proto.ConnectRequest;
 import org.apache.zookeeper.server.Request;
 import org.apache.zookeeper.server.ByteBufferInputStream;
+import org.apache.jute.Record;
 
 
 public class App {
@@ -31,9 +32,15 @@ public class App {
         sessionTimeout = 30000;
         sessionId = 0;
         sessionPasswd = new byte[16];
-        initSocket("localhost");
+        initSocket("152.3.54.200");
         connect();
+        close();
         createEphemeral("/transient", null);
+        parseResponse("connect");
+
+        parseResponse("create");
+
+        // parseResponse("close");
         while (true) {
             Thread.sleep(1000);
         }
@@ -55,29 +62,9 @@ public class App {
         // send connect request
         ConnectRequest conReq = new ConnectRequest(0, lastZxid,
                     sessionTimeout, sessionId, sessionPasswd);
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        BinaryOutputArchive boa = BinaryOutputArchive.getArchive(baos);
-        boa.writeInt(-1, "len");
-        conReq.serialize(boa, "connect");
-        baos.close();
-        ByteBuffer bb = ByteBuffer.wrap(baos.toByteArray());
-        bb.putInt(bb.capacity() - 4);
-        bb.rewind();
-        // bb is the payload to be sent
-        sock.write(bb);
+        sendRequest(null, conReq);
 
-        // read response to be implemented
-        ByteBuffer incomingBuffer = ByteBuffer.allocateDirect(1024);
-        sock.read(incomingBuffer);
-        // System.out.println(incomingBuffer);
-        ByteBufferInputStream bbis = new ByteBufferInputStream(
-                    incomingBuffer);
-        BinaryInputArchive bbia = BinaryInputArchive.getArchive(bbis);
-        ReplyHeader replyHdr = new ReplyHeader();
 
-        replyHdr.deserialize(bbia, "header");
-        System.out.println("receiving connect reply");
-        System.out.println(replyHdr.toString());
 
     }   
 
@@ -87,35 +74,57 @@ public class App {
         RequestHeader h = new RequestHeader();
                 h.setType(ZooDefs.OpCode.create);
         CreateRequest request = new CreateRequest();
-        CreateResponse response = new CreateResponse();
         request.setData(data);
         request.setFlags(1);
         request.setPath(clientPath);
         request.setAcl(Ids.OPEN_ACL_UNSAFE);
+        sendRequest(h, request);
+
+    }
+
+    // send a close session request
+    public static void close() throws IOException {
+        // send close request
+        // read response to be implemented
+                
+        RequestHeader h = new RequestHeader();
+                h.setType(ZooDefs.OpCode.closeSession);
+        sendRequest(h, null);
+    }
+
+    public static void sendRequest(RequestHeader h, Record r) throws IOException {
         ByteBuffer bb;
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         BinaryOutputArchive boa = BinaryOutputArchive
                 .getArchive(baos);
+
         boa.writeInt(-1, "len"); // We'll fill this in later
-        h.serialize(boa, "header");
-      
-        request.serialize(boa, "request");
+        if (h != null) {
+            h.serialize(boa, "header");
+        }
+        
+        if (r != null) {
+            r.serialize(boa, "request");
+        }
         
         baos.close();
         bb = ByteBuffer.wrap(baos.toByteArray());
         bb.putInt(bb.capacity() - 4);
         bb.rewind();
         sock.write(bb);
+    }
+    
+    public static void parseResponse(String info) throws IOException {
+         // read response to be implemented
         ByteBuffer incomingBuffer = ByteBuffer.allocateDirect(1024);
         sock.read(incomingBuffer);
-
+        // System.out.println(incomingBuffer);
         ByteBufferInputStream bbis = new ByteBufferInputStream(
                     incomingBuffer);
         BinaryInputArchive bbia = BinaryInputArchive.getArchive(bbis);
         ReplyHeader replyHdr = new ReplyHeader();
-
         replyHdr.deserialize(bbia, "header");
-        System.out.println("receiving create reply");
+        System.out.println("receiving" + info + "reply");
         System.out.println(replyHdr.toString());
     }
 }
